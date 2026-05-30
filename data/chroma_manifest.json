@@ -1,0 +1,16 @@
+{
+  "embed_model": "voyage-4-large",
+  "embed_dim": 1024,
+  "collection": "sec_filings",
+  "total_chunks": 228,
+  "built_at": "2026-05-30T17:55:22.612786+00:00",
+  "filings": [
+    {
+      "ticker": "MSFT",
+      "fiscal_year": 2023,
+      "accession": "0000950170-23-035122",
+      "chunk_count": 228,
+      "bm25_subdir": "0000950170-23-035122"
+    }
+  ]
+}
