@@ -84,6 +84,41 @@ def _parse_date(value: str | date) -> date:
     return date.fromisoformat(str(value)[:10])
 
 
+def _coalesce_sections(raw_sections: list[tuple[str | None, str]]) -> list[Section]:
+    """Merge raw (item_suffix, text) pairs into exactly one Section per item.
+
+    edgartools sometimes returns a single Item as several section objects — e.g.
+    American Express's Item 8 comes back as the auditor's report and the financial
+    statements separately. They are one logical Item, so we concatenate their text
+    in document order under the canonical title. This also keeps chunk ids unique:
+    the chunker keys an id on (item, in-section char offset), so two sections that
+    share an item would both emit a chunk at offset 0 and collide (see
+    tests/corpus/test_ingest.py). Empty/unlabeled inputs are dropped; the result
+    is sorted into canonical item order.
+    """
+    texts_by_item: dict[str, list[str]] = {}
+    first_seen: list[str] = []
+    for item_suffix, text in raw_sections:
+        if not item_suffix or not text.strip():
+            continue
+        item_label = f"Item {str(item_suffix).upper()}"
+        if item_label not in texts_by_item:
+            texts_by_item[item_label] = []
+            first_seen.append(item_label)
+        texts_by_item[item_label].append(text)
+
+    sections = [
+        Section(
+            item=item_label,
+            title=ITEM_TITLES.get(item_label.removeprefix("Item "), item_label),
+            text="\n\n".join(texts_by_item[item_label]),
+        )
+        for item_label in first_seen
+    ]
+    sections.sort(key=lambda s: _item_sort_key(s.item))
+    return sections
+
+
 def ingest_filing(ticker: str, fiscal_year: int) -> Filing:
     """Fetch a 10-K from EDGAR and return our `Filing` model."""
     _ensure_identity()
@@ -93,22 +128,16 @@ def ingest_filing(ticker: str, fiscal_year: int) -> Filing:
     if tenk is None:
         raise RuntimeError(f"edgartools could not parse 10-K {edgar_filing.accession_number}.")
 
-    sections: list[Section] = []
+    raw_sections: list[tuple[str | None, str]] = []
     for _key, section_obj in (tenk.sections or {}).items():
         item_suffix = getattr(section_obj, "item", None)
-        if not item_suffix:
-            continue
-        item_suffix = str(item_suffix).upper()
-        item_label = f"Item {item_suffix}"
-        title = ITEM_TITLES.get(item_suffix, item_label)
         text_attr = getattr(section_obj, "text", None)
         text = text_attr() if callable(text_attr) else str(section_obj)
-        if not text.strip():
-            continue
-        sections.append(Section(item=item_label, title=title, text=text))
+        raw_sections.append((item_suffix, text))
 
-    # Stable order: by canonical item label.
-    sections.sort(key=lambda s: _item_sort_key(s.item))
+    # Coalesce parts of the same Item into one Section (one section per item) and
+    # sort into canonical item order — see _coalesce_sections.
+    sections = _coalesce_sections(raw_sections)
 
     if not sections:
         raise RuntimeError(

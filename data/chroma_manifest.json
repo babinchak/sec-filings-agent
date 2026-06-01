@@ -2,8 +2,8 @@
   "embed_model": "voyage-4-large",
   "embed_dim": 1024,
   "collection": "sec_filings",
-  "total_chunks": 228,
-  "built_at": "2026-05-30T17:55:22.612786+00:00",
+  "total_chunks": 2004,
+  "built_at": "2026-05-30T20:47:53.243090+00:00",
   "filings": [
     {
       "ticker": "MSFT",
@@ -11,6 +11,41 @@
       "accession": "0000950170-23-035122",
       "chunk_count": 228,
       "bm25_subdir": "0000950170-23-035122"
+    },
+    {
+      "ticker": "AMD",
+      "fiscal_year": 2022,
+      "accession": "0000002488-23-000047",
+      "chunk_count": 223,
+      "bm25_subdir": "0000002488-23-000047"
+    },
+    {
+      "ticker": "AXP",
+      "fiscal_year": 2022,
+      "accession": "0000004962-23-000006",
+      "chunk_count": 828,
+      "bm25_subdir": "0000004962-23-000006"
+    },
+    {
+      "ticker": "BA",
+      "fiscal_year": 2022,
+      "accession": "0000012927-23-000007",
+      "chunk_count": 238,
+      "bm25_subdir": "0000012927-23-000007"
+    },
+    {
+      "ticker": "PEP",
+      "fiscal_year": 2022,
+      "accession": "0000077476-23-000007",
+      "chunk_count": 269,
+      "bm25_subdir": "0000077476-23-000007"
+    },
+    {
+      "ticker": "AMCR",
+      "fiscal_year": 2023,
+      "accession": "0001748790-23-000030",
+      "chunk_count": 218,
+      "bm25_subdir": "0001748790-23-000030"
     }
   ]
 }

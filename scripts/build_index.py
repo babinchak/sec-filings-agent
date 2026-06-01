@@ -110,6 +110,51 @@ def _embed_chunks_rate_limited(chunks: list[Chunk]) -> list[list[float]]:
     return vectors
 
 
+def _embed_chunks(chunks: list[Chunk]) -> list[list[float]]:
+    """Embed every chunk's text, throttling only when configured.
+
+    Default (a paid Voyage key): one full-speed pass via ``embed_documents`` in
+    128-text batches. With ``settings.voyage_throttle`` set, fall back to the
+    free-tier-paced path above. Returned vectors align 1:1 with ``chunks``.
+    """
+    if settings.voyage_throttle:
+        return _embed_chunks_rate_limited(chunks)
+    return embed_documents([c.text for c in chunks])
+
+
+def _merged_manifest_entries(new_entries: list[dict]) -> list[dict]:
+    """Union freshly-built entries with any already in the on-disk manifest.
+
+    This makes builds incremental: a previously-indexed filing's vectors (Chroma)
+    and lexical index (its bm25 subdir) are left untouched on disk, so we keep its
+    manifest entry rather than re-embedding it. Entries for accessions we just
+    rebuilt are replaced by the new ones.
+
+    Raises if the existing manifest was built with a different embedder — two
+    embedding spaces in one collection would corrupt retrieval silently, which
+    PROJECT.md forbids; the operator must rebuild from scratch instead.
+    """
+    manifest_path = settings.data_dir / _MANIFEST_FILENAME
+    if not manifest_path.exists():
+        return list(new_entries)
+
+    existing = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if (
+        existing.get("embed_model") != settings.embed_model
+        or existing.get("embed_dim") != settings.embed_dim
+    ):
+        raise RuntimeError(
+            f"Existing manifest was built with {existing.get('embed_model')}/"
+            f"{existing.get('embed_dim')} but settings now use "
+            f"{settings.embed_model}/{settings.embed_dim}. Delete data/chroma + "
+            f"data/bm25 and rebuild rather than mixing embedders in one collection."
+        )
+
+    rebuilt = {e["accession"] for e in new_entries}
+    preserved = [e for e in existing.get("filings", []) if e["accession"] not in rebuilt]
+    return preserved + list(new_entries)
+
+
 def build_index(targets: list[tuple[str, int]]) -> dict:
     """Ingest, chunk, embed and index each (ticker, fiscal_year); write manifest.
 
@@ -136,7 +181,7 @@ def build_index(targets: list[tuple[str, int]]) -> dict:
             )
 
         print(f"[{ticker} {fiscal_year}] embedding {len(chunks)} chunks with {settings.embed_model}...")
-        vecs = _embed_chunks_rate_limited(chunks)
+        vecs = _embed_chunks(chunks)
 
         print(f"[{ticker} {fiscal_year}] upserting into Chroma collection {settings.chroma_collection!r}...")
         vs.upsert_chunks(chunks, vecs)
@@ -159,13 +204,18 @@ def build_index(targets: list[tuple[str, int]]) -> dict:
         total_chunks += len(chunks)
         print(f"[{ticker} {fiscal_year}] done: {len(chunks)} chunks, accession {filing.accession_number}")
 
+    all_entries = _merged_manifest_entries(entries)
+    print(
+        f"Indexed {total_chunks} new chunk(s) across {len(entries)} filing(s); "
+        f"manifest now covers {len(all_entries)} filing(s)."
+    )
     manifest = {
         "embed_model": settings.embed_model,
         "embed_dim": settings.embed_dim,
         "collection": settings.chroma_collection,
-        "total_chunks": total_chunks,
+        "total_chunks": sum(e["chunk_count"] for e in all_entries),
         "built_at": datetime.now(timezone.utc).isoformat(),
-        "filings": entries,
+        "filings": all_entries,
     }
 
     settings.data_dir.mkdir(parents=True, exist_ok=True)
@@ -194,13 +244,15 @@ def _verify(manifest: dict) -> int:
         )
     print(f"Verify: Chroma count {count} == manifest total_chunks {total}.")
 
-    hits = hybrid_search("revenue", ticker="MSFT", fiscal_year=2023, top_k=3)
+    probe = manifest["filings"][0]
+    p_ticker, p_year = probe["ticker"], probe["fiscal_year"]
+    hits = hybrid_search("revenue", ticker=p_ticker, fiscal_year=p_year, top_k=3)
     if not hits or not hits[0].chunk.text:
         raise RuntimeError(
-            "Verify query 'revenue' (MSFT 2023) returned no usable hits; "
+            f"Verify query 'revenue' ({p_ticker} {p_year}) returned no usable hits; "
             "the index is built but not retrievable."
         )
-    print(f"Verify: hybrid_search('revenue', MSFT 2023) -> {len(hits)} hits.")
+    print(f"Verify: hybrid_search('revenue', {p_ticker} {p_year}) -> {len(hits)} hits.")
     top = hits[0]
     print(
         f"  top hit: {top.chunk.chunk_id} (item {top.chunk.item}, "

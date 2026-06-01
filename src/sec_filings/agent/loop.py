@@ -74,6 +74,15 @@ ROUTER_SYSTEM: str = (
     "  4. The indexed corpus is limited to specific filings. If a tool reports "
     "that the requested fiscal year is not available, retry with one of the "
     "available fiscal years it lists rather than giving up.\n\n"
+    "Answering rules:\n"
+    "  - If a question asks which securities or items are registered, listed, or "
+    "disclosed and the retrieved evidence shows only non-matching items (or "
+    "states 'none'), answer plainly that there are none. Do not hedge or defer "
+    "to an exhibit you have not actually read.\n"
+    "  - If a specific figure for the requested item is disclosed ANYWHERE in "
+    "the filing — on the face of a statement OR within a note — report that "
+    "figure. Do not answer '0' or 'not present' merely because it is not a "
+    "separate line item on the face of a statement.\n\n"
     "Answer ONLY from the tool results you receive — never from prior knowledge. "
     "If the tools cannot supply something, say so plainly. Cite the source of "
     "every number (the tool, company, fiscal year, and concept) and cite the "
@@ -164,6 +173,7 @@ def run_agent(
     question: str,
     *,
     model: str = settings.agent_model,
+    temperature: float = settings.agent_temperature,
     max_steps: int = 12,
     on_event: Callable[[AgentStep], None] | None = None,
 ) -> AgentTrace:
@@ -217,11 +227,16 @@ def run_agent(
                     name=f"claude_turn_{turn + 1}",
                     model=model,
                     input=_safe_messages(messages),
-                    model_parameters={"max_tokens": 2048, "tool_choice": "auto"},
+                    model_parameters={
+                        "max_tokens": 2048,
+                        "temperature": temperature,
+                        "tool_choice": "auto",
+                    },
                 ) as gen:
                     resp = client.messages.create(
                         model=model,
                         max_tokens=2048,
+                        temperature=temperature,
                         system=ROUTER_SYSTEM,
                         tools=TOOLS,
                         tool_choice={"type": "auto"},

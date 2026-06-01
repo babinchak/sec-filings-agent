@@ -41,8 +41,26 @@ class Settings(BaseSettings):
     embed_model: str = "voyage-4-large"
     embed_dim: int = 1024
     agent_model: str = "claude-sonnet-4-6"
+    # LLM-as-judge model for the eval harness. Defaults to the agent model so the
+    # whole eval runs on one key/tier; point JUDGE_MODEL at a stronger model
+    # (e.g. an Opus) to cut self-enhancement bias when grading this agent's own
+    # answers. The judge is forced through a tool call (evaluation/judge.py), so
+    # the model choice affects grading quality, not the verdict's shape.
+    judge_model: str = "claude-sonnet-4-6"
+    # Agent sampling temperature. 0 = greedy/deterministic, so the eval number
+    # stops drifting run-to-run (a question can't pass on one sample and fail on
+    # the next). Raise it only to study answer diversity. The judge is always
+    # temperature 0 (see evaluation/judge.py).
+    agent_temperature: float = 0.0
     fmp_base_url: str = "https://financialmodelingprep.com/stable"
     chroma_collection: str = "sec_filings"
+
+    # Indexing throttle. Off by default (a paid Voyage key embeds at full speed).
+    # Flip VOYAGE_THROTTLE=true for a free-tier key (3 RPM / 10K TPM): build_index
+    # then paces requests and backs off so the build still completes — see
+    # scripts/build_index.py. It only schedules requests; it changes nothing about
+    # what gets indexed.
+    voyage_throttle: bool = Field(default=False)
 
     # Langfuse tracing (optional). We read these explicitly here — not via the
     # Langfuse SDK's own env auto-detection — because pydantic-settings loads

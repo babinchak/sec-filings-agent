@@ -31,6 +31,19 @@ class EvalRecord(BaseModel):
         description="Accession numbers of filings the gold answer depends on.",
     )
 
+    # FinanceBench curation labels (set when source == "financebench"). ticker +
+    # fiscal_year let the eval runner route the retrieve tool at the right filing
+    # without resolving the accession first; question_type mirrors FinanceBench's
+    # own taxonomy (metrics-generated / domain-relevant / novel-generated).
+    ticker: str | None = None
+    fiscal_year: int | None = None
+    doc_name: str | None = None
+    question_type: str | None = None
+    gold_evidence: str | None = Field(
+        default=None,
+        description="The benchmark's cited evidence text supporting the gold answer.",
+    )
+
     # Result (run-time).
     predicted_answer: str | None = None
     retrieved_chunk_ids: list[str] = Field(default_factory=list)
